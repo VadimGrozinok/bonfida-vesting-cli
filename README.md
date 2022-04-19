@@ -42,17 +42,36 @@ Where:
 
 Once json file is ready we can launch command to create vesting contract:
 ```
-cargo run -- --url https://api.testnet.solana.com --payer-keypair MUovFFrR2a3cHD9TwkuiyuXuzmze7SjioUaUGjCYekUwhqiR3QH3qNqq3K9rhxKh6dA6swmfPvAZxZuQ4qgnpeZ create --vesting-data-file ./vesting.json
+cargo run -- --payer-keypair MUovFFrR2a3cHD9TwkuiyuXuzmze7SjioUaUGjCYekUwhqiR3QH3qNqq3K9rhxKh6dA6swmfPvAZxZuQ4qgnpeZ create --vesting-data-file ./vesting.json
 ```
 
-It's example of creation vesting contract in testnet.
+After you launch this command you will see output like this:
+```
+The seed of the contract is: c8fpTXm3XTRgE5maYQ24Li4L65wMYvAFomzXknxVF2V
+Please write it down as it is needed to interact with the contract!
+The vesting account pubkey: 4XNHJ9nznX5Hb2maNrge4W8VqWTMBpv8GTp6kZx7zW3Y
+Tx signature: 4HfeiFnhCsKY6WdqdjAao2jdfmHJtovbPeFoeYBMijjjT6BvcY6kP3zsTDK6ZAxBYaLiHxwYezNvsKuiTFZxKnui
+```
+
+Please save seed of the contract key. It's very important because you will need it to unlock tokens.
 
 You can see that we set `payer-keypair` value as base58 string. You can find this value in your Phantom wallet. More specifically go to the `settings` -> `Export Private Key`.
 
-[![](./assets/1.png)]
+![](./assets/1.png)
 
-[![](./assets/2.png)]
+![](./assets/2.png)
 
-[![](./assets/3.png)]
+![](./assets/3.png)
 
 And that's it vesting contract is created.
+
+The next step will be unlock tokens when the time comes.
+
+To run unlock command you need seed generated during vesting contract creation.
+
+Command looks like this:
+```
+cargo run -- --payer-keypair MUovFFrR2a3cHD9TwkuiyuXuzmze7SjioUaUGjCYekUwhqiR3QH3qNqq3K9rhxKh6dA6swmfPvAZxZuQ4qgnpeZ unlock --vesting-seed c8fpTXm3XTRgE5maYQ24Li4L65wMYvAFomzXknxVF2V
+```
+
+Unlock is permissionless instruction so anyone can call it and smart contract will transfer locked tokens to the right address.
