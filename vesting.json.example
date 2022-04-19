@@ -1,0 +1,8 @@
+{
+    "key": "799ajrhYR7Woee3TbAoWSgYwXLkVmLEvWY6iWcGko1no",
+    "receiver_key_type": "Wallet",
+    "mint": "4pM5pFnmhzVCSZnQHq3dkNXYC5SLtkmHYce16VmRghbY",
+    "schedules": [
+                {"release_time": 1650326333, "amount": 3000000000000}
+            ]
+}
