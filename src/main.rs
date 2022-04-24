@@ -1,16 +1,23 @@
 use clap::Parser;
 use cli_args::{CliArgs, Commands};
 use serde::{Deserialize, Serialize};
-use solana_client::rpc_client::RpcClient;
+use solana_client::rpc_client::{GetConfirmedSignaturesForAddress2Config, RpcClient};
 use solana_program::{program_pack::Pack, system_program, sysvar};
+use solana_sdk::signature::Signature;
 use solana_sdk::{
     pubkey::Pubkey,
     signer::{keypair::Keypair, Signer},
     transaction::Transaction,
 };
+use solana_transaction_status::{
+    EncodedTransaction, UiMessage, UiTransactionEncoding,
+};
 use spl_associated_token_account::{create_associated_token_account, get_associated_token_address};
+use std::collections::HashMap;
+use std::fs;
 use std::fs::File;
 use std::io::Read;
+use std::path::Path;
 use std::str::FromStr;
 use token_vesting::{
     instruction::{create, init, unlock, Schedule},
@@ -18,6 +25,8 @@ use token_vesting::{
 };
 
 mod cli_args;
+
+pub const BONFIDA_KEY: &str = "CChTq6PthWU82YZkbveA3WDf7s97BWhBK4Vx9bmsT743";
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct VestingData {
@@ -203,6 +212,122 @@ fn main() {
                 .unwrap();
 
             println!("Tx signature: {:?}", tx);
+        }
+        Commands::Verify { directory } => {
+            let path = Path::new(&directory);
+            for entry in fs::read_dir(path).expect("Unable to list") {
+                let entry = entry.expect("unable to get entry");
+
+                let mut file = File::open(entry.path()).unwrap();
+                let mut data = String::new();
+                file.read_to_string(&mut data).unwrap();
+
+                let vesting_data: VestingData = serde_json::from_str(&data).unwrap();
+
+                let config = GetConfirmedSignaturesForAddress2Config {
+                    before: None,
+                    until: None,
+                    limit: Some(1),
+                    commitment: None,
+                };
+                let signature = rpc_client
+                    .get_signatures_for_address_with_config(
+                        &Pubkey::from_str(&vesting_data.key).unwrap(),
+                        config,
+                    )
+                    .unwrap();
+
+                let transaction = rpc_client
+                    .get_transaction(
+                        &Signature::from_str(&signature.get(0).unwrap().signature).unwrap(),
+                        UiTransactionEncoding::Json,
+                    )
+                    .unwrap();
+
+                let mut keys: HashMap<u8, String> = HashMap::new();
+
+                if let EncodedTransaction::Json(transaction_json) =
+                    transaction.transaction.transaction
+                {
+                    if let UiMessage::Raw(message_raw) = transaction_json.message {
+                        for (ind, el) in message_raw.account_keys.iter().enumerate() {
+                            keys.insert(ind as u8, String::from(el));
+                        }
+
+                        for instruction in message_raw.instructions {
+                            if keys.get(&instruction.program_id_index).unwrap() == BONFIDA_KEY {
+                                let instruction_data =
+                                    bs58::decode(instruction.data).into_vec().unwrap();
+                                let deserialized_instruction =
+                                    token_vesting::instruction::VestingInstruction::unpack(
+                                        &instruction_data,
+                                    )
+                                    .unwrap();
+
+                                if let token_vesting::instruction::VestingInstruction::Create {
+                                    seeds,
+                                    mint_address,
+                                    destination_token_address,
+                                    schedules,
+                                } = deserialized_instruction
+                                {
+                                    let seed_key = Pubkey::new_from_array(seeds);
+                                    let expected_mint =
+                                        Pubkey::from_str(&vesting_data.mint).unwrap();
+
+                                    if mint_address != expected_mint {
+                                        println!(
+                                            "Mint key mismatch.\nExpected {:?}\nReceived {:?}",
+                                            expected_mint, mint_address
+                                        );
+                                    }
+
+                                    let expected_schedule: Vec<Schedule> = vesting_data
+                                        .schedules
+                                        .iter()
+                                        .map(|x| Schedule {
+                                            release_time: x.release_time,
+                                            amount: x.amount,
+                                        })
+                                        .collect();
+
+                                    if schedules != expected_schedule {
+                                        println!(
+                                            "Schedule mismatch.\nExpected: {:?}\nReceived: {:?}",
+                                            expected_schedule, schedules
+                                        );
+                                    }
+
+                                    let expected_token_account = {
+                                        match vesting_data.receiver_key_type {
+                                            ReceiverKeyType::Wallet => {
+                                                get_associated_token_address(
+                                                    &Pubkey::from_str(vesting_data.key.as_ref())
+                                                        .unwrap(),
+                                                    &expected_mint,
+                                                )
+                                            }
+                                            ReceiverKeyType::TokenAcc => {
+                                                Pubkey::from_str(vesting_data.key.as_ref()).unwrap()
+                                            }
+                                        }
+                                    };
+
+                                    if destination_token_address != expected_token_account {
+                                        println!("Destination token account mismatch.\nExpected: {:?}\nReceived: {:?}", expected_token_account, destination_token_address);
+                                    }
+
+                                    println!("\n--------------\nReceiver token acc: {:?}\nSeed: {:?}\nFile: {:?}\n--------------", expected_token_account, seed_key, entry.path());
+                                }
+                            }
+                        }
+                    } else {
+                        panic!("Error while message deserialization");
+                    }
+                } else {
+                    panic!("Error while transaction deserialization");
+                }
+            }
         }
     }
 }

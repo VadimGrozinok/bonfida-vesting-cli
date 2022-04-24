@@ -35,4 +35,9 @@ pub enum Commands {
         #[clap(long, value_name = "PUBKEY")]
         vesting_seed: String,
     },
+    ///
+    Verify {
+        #[clap(long, value_name = "DIR")]
+        directory: String,
+    },
 }
